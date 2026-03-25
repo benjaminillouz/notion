@@ -9,34 +9,53 @@ export function useAuth() {
   useEffect(() => {
     let mounted = true;
 
-    async function fetchProfile(userId: string): Promise<boolean> {
-      for (let attempt = 0; attempt < 5; attempt++) {
+    async function fetchProfile(userId: string, email?: string): Promise<boolean> {
+      // Try by id first, then by email (for pre-provisioned users)
+      for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          const { data, error } = await supabase
+          // Try by auth id
+          let { data } = await supabase
             .from('users')
             .select('*')
             .eq('id', userId)
             .single();
+
+          // If not found by id, try by email
+          if (!data && email) {
+            const res = await supabase
+              .from('users')
+              .select('*')
+              .eq('email', email)
+              .single();
+            data = res.data;
+
+            // If found by email, update the id to match auth.uid
+            if (data) {
+              await supabase
+                .from('users')
+                .update({ id: userId })
+                .eq('email', email);
+              data.id = userId;
+            }
+          }
+
           if (data && mounted) {
             setUser(data as User);
             return true;
           }
-          if (error) console.warn('fetchProfile attempt', attempt + 1, error.message);
         } catch (e) {
-          console.warn('fetchProfile exception', e);
+          console.warn('fetchProfile attempt', attempt + 1, e);
         }
-        if (attempt < 4) await new Promise((r) => setTimeout(r, 1500));
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 1000));
       }
       return false;
     }
 
     async function init() {
       try {
-        // First check if there's a session already stored
         const { data: { session } } = await supabase.auth.getSession();
-
         if (session?.user && mounted) {
-          const found = await fetchProfile(session.user.id);
+          const found = await fetchProfile(session.user.id, session.user.email);
           if (!found && mounted) {
             console.error('Profile not found, clearing session');
             await supabase.auth.signOut();
@@ -50,14 +69,11 @@ export function useAuth() {
       }
     }
 
-    // Listen for auth state changes (handles OAuth callback)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth event:', event);
-        if (event === 'SIGNED_IN' && session?.user && mounted) {
-          const found = await fetchProfile(session.user.id);
+        if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') && session?.user && mounted) {
+          const found = await fetchProfile(session.user.id, session.user.email);
           if (!found && mounted) {
-            console.error('Profile not found after sign in');
             await supabase.auth.signOut();
             setUser(null);
           }
@@ -78,13 +94,10 @@ export function useAuth() {
   }, [setUser, setLoading]);
 
   const signIn = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
+    await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        redirectTo: 'https://notion.cemedis.app',
-      },
+      options: { redirectTo: 'https://notion.cemedis.app' },
     });
-    if (error) console.error('Sign in error:', error);
   };
 
   const signOut = async () => {
