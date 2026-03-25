@@ -56,16 +56,14 @@ function CreateUserModal({ dark, onClose, onCreated, existingCount }: CreateUser
     setError('');
 
     try {
-      // Direct insert - table has no FK to auth.users
-      const { data, error: insertErr } = await supabase.from('users').insert({
-        id: crypto.randomUUID(),
-        email: email.trim().toLowerCase(),
-        name: name.trim(),
-        initials: computedInitials,
-        color,
-        role,
-        is_active: true,
-      }).select().single();
+      // Use RPC to bypass PostgREST stale schema cache
+      const { data, error: insertErr } = await supabase.rpc('admin_create_user', {
+        user_email: email.trim().toLowerCase(),
+        user_name: name.trim(),
+        user_initials: computedInitials,
+        user_color: color,
+        user_role: role,
+      });
 
       if (insertErr) {
         if (insertErr.message?.includes('duplicate') || insertErr.message?.includes('unique')) {
