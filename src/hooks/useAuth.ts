@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../stores/authStore';
 import type { User } from '../lib/types';
@@ -6,60 +6,45 @@ import type { User } from '../lib/types';
 export function useAuth() {
   const { user, loading, setUser, setLoading, logout } = useAuthStore();
 
+  const fetchProfile = useCallback(async (userId: string, email?: string): Promise<User | null> => {
+    try {
+      // Try by id
+      const { data } = await supabase.from('users').select('*').eq('id', userId).maybeSingle();
+      if (data) return data as User;
+
+      // Fallback: try by email (for pre-provisioned users)
+      if (email) {
+        const { data: emailData } = await supabase.from('users').select('*').eq('email', email).maybeSingle();
+        if (emailData) {
+          // Update the id to match auth uid
+          await supabase.from('users').update({ id: userId }).eq('email', email);
+          return { ...emailData, id: userId } as User;
+        }
+      }
+    } catch (e) {
+      console.error('fetchProfile error:', e);
+    }
+    return null;
+  }, []);
+
   useEffect(() => {
     let mounted = true;
 
-    async function fetchProfile(userId: string, email?: string): Promise<boolean> {
-      // Try by id first, then by email (for pre-provisioned users)
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          // Try by auth id
-          let { data } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', userId)
-            .single();
-
-          // If not found by id, try by email
-          if (!data && email) {
-            const res = await supabase
-              .from('users')
-              .select('*')
-              .eq('email', email)
-              .single();
-            data = res.data;
-
-            // If found by email, update the id to match auth.uid
-            if (data) {
-              await supabase
-                .from('users')
-                .update({ id: userId })
-                .eq('email', email);
-              data.id = userId;
-            }
-          }
-
-          if (data && mounted) {
-            setUser(data as User);
-            return true;
-          }
-        } catch (e) {
-          console.warn('fetchProfile attempt', attempt + 1, e);
-        }
-        if (attempt < 2) await new Promise((r) => setTimeout(r, 1000));
+    // Safety timeout: never stay on loading for more than 8 seconds
+    const timeout = setTimeout(() => {
+      if (mounted && useAuthStore.getState().loading) {
+        console.warn('Auth timeout - forcing loading=false');
+        setLoading(false);
       }
-      return false;
-    }
+    }, 8000);
 
     async function init() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user && mounted) {
-          const found = await fetchProfile(session.user.id, session.user.email);
-          if (!found && mounted) {
-            console.error('Profile not found, clearing session');
-            await supabase.auth.signOut();
-            setUser(null);
+          const profile = await fetchProfile(session.user.id, session.user.email);
+          if (profile && mounted) {
+            setUser(profile);
           }
         }
       } catch (e) {
@@ -69,29 +54,37 @@ export function useAuth() {
       }
     }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') && session?.user && mounted) {
-          const found = await fetchProfile(session.user.id, session.user.email);
-          if (!found && mounted) {
-            await supabase.auth.signOut();
-            setUser(null);
-          }
-          if (mounted) setLoading(false);
-        } else if (event === 'SIGNED_OUT' && mounted) {
-          setUser(null);
-          setLoading(false);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth event:', event, session?.user?.email);
+      if (event === 'SIGNED_IN' && session?.user && mounted) {
+        const profile = await fetchProfile(session.user.id, session.user.email);
+        if (profile && mounted) {
+          setUser(profile);
         }
+        if (mounted) setLoading(false);
+      } else if (event === 'SIGNED_OUT' && mounted) {
+        setUser(null);
+        setLoading(false);
+      } else if (event === 'INITIAL_SESSION' && mounted) {
+        // INITIAL_SESSION fires on page load
+        if (session?.user) {
+          const profile = await fetchProfile(session.user.id, session.user.email);
+          if (profile && mounted) {
+            setUser(profile);
+          }
+        }
+        setLoading(false);
       }
-    );
+    });
 
     init();
 
     return () => {
       mounted = false;
+      clearTimeout(timeout);
       subscription.unsubscribe();
     };
-  }, [setUser, setLoading]);
+  }, [setUser, setLoading, fetchProfile]);
 
   const signIn = async () => {
     await supabase.auth.signInWithOAuth({
