@@ -4,17 +4,18 @@ import { useAuthStore } from '../stores/authStore';
 import type { User } from '../lib/types';
 
 async function fetchProfile(userId: string, email?: string): Promise<User | null> {
-  // Try by auth id
-  const { data } = await supabase.from('users').select('*').eq('id', userId).maybeSingle();
-  if (data) return data as User;
-
-  // Fallback: try by email (pre-provisioned users)
-  if (email) {
-    const { data: byEmail } = await supabase.from('users').select('*').eq('email', email).maybeSingle();
-    if (byEmail) {
-      await supabase.from('users').update({ id: userId }).eq('email', email);
-      return { ...byEmail, id: userId } as User;
+  try {
+    const { data } = await supabase.from('users').select('*').eq('id', userId).maybeSingle();
+    if (data) return data as User;
+    if (email) {
+      const { data: byEmail } = await supabase.from('users').select('*').eq('email', email).maybeSingle();
+      if (byEmail) {
+        await supabase.from('users').update({ id: userId }).eq('email', email);
+        return { ...byEmail, id: userId } as User;
+      }
     }
+  } catch (e) {
+    console.error('[auth] fetchProfile error:', e);
   }
   return null;
 }
@@ -23,24 +24,33 @@ export function useAuth() {
   const { user, loading, setUser, setLoading, logout } = useAuthStore();
 
   useEffect(() => {
-    // onAuthStateChange handles EVERYTHING: initial load, OAuth callback, sign out
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[auth]', event, session?.user?.email ?? 'no-session');
+    let handled = false;
 
+    async function handleSession(session: any) {
+      if (handled) return;
+      handled = true;
       if (session?.user) {
-        try {
-          const profile = await fetchProfile(session.user.id, session.user.email);
-          setUser(profile);
-        } catch (e) {
-          console.error('[auth] fetchProfile failed:', e);
-          setUser(null);
-        }
+        const profile = await fetchProfile(session.user.id, session.user.email);
+        setUser(profile);
       } else {
         setUser(null);
       }
-
-      // ALWAYS set loading false after processing any event
       setLoading(false);
+    }
+
+    // Method 1: Listen for auth events
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log('[auth] event:', _event);
+      handleSession(session);
+    });
+
+    // Method 2: Explicit getSession as fallback (in case onAuthStateChange doesn't fire)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('[auth] getSession:', session?.user?.email ?? 'no session');
+      // Only handle if onAuthStateChange hasn't already fired
+      if (!handled) {
+        handleSession(session);
+      }
     });
 
     return () => {

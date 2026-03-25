@@ -56,20 +56,21 @@ function CreateUserModal({ dark, onClose, onCreated, existingCount }: CreateUser
     setError('');
 
     try {
-      // Use RPC to bypass PostgREST schema cache issue
-      const { data, error: rpcErr } = await supabase.rpc('create_user', {
-        p_email: email.trim().toLowerCase(),
-        p_name: name.trim(),
-        p_initials: computedInitials,
-        p_color: color,
-        p_role: role,
-      });
+      // Direct insert - table has no FK to auth.users
+      const { data, error: insertErr } = await supabase.from('users').insert({
+        email: email.trim().toLowerCase(),
+        name: name.trim(),
+        initials: computedInitials,
+        color,
+        role,
+        is_active: true,
+      }).select().single();
 
-      if (rpcErr) {
-        if (rpcErr.message?.includes('duplicate') || rpcErr.message?.includes('unique')) {
+      if (insertErr) {
+        if (insertErr.message?.includes('duplicate') || insertErr.message?.includes('unique')) {
           setError('Un utilisateur avec cet email existe déjà.');
         } else {
-          setError(rpcErr.message || 'Erreur lors de la création.');
+          setError(insertErr.message || 'Erreur lors de la création.');
         }
         setLoading(false);
         return;
