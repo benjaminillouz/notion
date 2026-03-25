@@ -9,47 +9,67 @@ export function useAuth() {
   useEffect(() => {
     let mounted = true;
 
-    async function getInitialSession() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user && mounted) {
-        await fetchProfile(session.user.id);
-      }
-      if (mounted) setLoading(false);
-    }
-
-    async function fetchProfile(userId: string) {
-      // Retry a few times in case the trigger hasn't created the profile yet
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const { data, error } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', userId)
-          .single();
-        if (data && mounted) {
-          setUser(data as User);
-          return;
+    async function fetchProfile(userId: string): Promise<boolean> {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', userId)
+            .single();
+          if (data && mounted) {
+            setUser(data as User);
+            return true;
+          }
+          if (error) console.warn('fetchProfile attempt', attempt + 1, error.message);
+        } catch (e) {
+          console.warn('fetchProfile exception', e);
         }
-        if (error) console.warn('fetchProfile attempt', attempt + 1, error.message);
-        if (attempt < 2) await new Promise((r) => setTimeout(r, 1000));
+        if (attempt < 4) await new Promise((r) => setTimeout(r, 1500));
       }
-      // If profile still not found, sign out to avoid stuck loading
-      console.error('User profile not found after retries, signing out');
-      await supabase.auth.signOut();
-      if (mounted) setUser(null);
+      return false;
     }
 
-    getInitialSession();
+    async function init() {
+      try {
+        // First check if there's a session already stored
+        const { data: { session } } = await supabase.auth.getSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
         if (session?.user && mounted) {
-          await fetchProfile(session.user.id);
-        } else if (mounted) {
-          setUser(null);
+          const found = await fetchProfile(session.user.id);
+          if (!found && mounted) {
+            console.error('Profile not found, clearing session');
+            await supabase.auth.signOut();
+            setUser(null);
+          }
         }
+      } catch (e) {
+        console.error('Auth init error:', e);
+      } finally {
         if (mounted) setLoading(false);
       }
+    }
+
+    // Listen for auth state changes (handles OAuth callback)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth event:', event);
+        if (event === 'SIGNED_IN' && session?.user && mounted) {
+          const found = await fetchProfile(session.user.id);
+          if (!found && mounted) {
+            console.error('Profile not found after sign in');
+            await supabase.auth.signOut();
+            setUser(null);
+          }
+          if (mounted) setLoading(false);
+        } else if (event === 'SIGNED_OUT' && mounted) {
+          setUser(null);
+          setLoading(false);
+        }
+      }
     );
+
+    init();
 
     return () => {
       mounted = false;
