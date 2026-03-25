@@ -58,6 +58,7 @@ function CreateUserModal({ dark, onClose, onCreated, existingCount }: CreateUser
     try {
       // Direct insert - table has no FK to auth.users
       const { data, error: insertErr } = await supabase.from('users').insert({
+        id: crypto.randomUUID(),
         email: email.trim().toLowerCase(),
         name: name.trim(),
         initials: computedInitials,
