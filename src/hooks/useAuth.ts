@@ -51,7 +51,7 @@ export function useAuth() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin + window.location.pathname,
+        redirectTo: 'https://notion.cemedis.app',
       },
     });
     if (error) console.error('Sign in error:', error);
