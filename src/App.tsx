@@ -196,8 +196,17 @@ function AppContent() {
 export default function App() {
   const { user, loading, signIn } = useAuth();
   const { darkMode } = useFilterStore();
+  const [timedOut, setTimedOut] = useState(false);
 
-  if (loading) {
+  // Absolute safety net: never show loading for more than 4 seconds
+  useEffect(() => {
+    const t = setTimeout(() => setTimedOut(true), 4000);
+    return () => clearTimeout(t);
+  }, []);
+
+  const showLoading = loading && !timedOut;
+
+  if (showLoading) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f7fa', flexDirection: 'column', gap: 10 }}>
         <div style={{ fontSize: '2rem' }}>⏳</div>

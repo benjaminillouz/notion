@@ -56,24 +56,20 @@ function CreateUserModal({ dark, onClose, onCreated, existingCount }: CreateUser
     setError('');
 
     try {
-      // Insert directly into users table (pre-provisioning)
-      // When the user logs in via Google OAuth, the trigger will match by email
-      const newId = crypto.randomUUID();
-      const { data, error: insertErr } = await supabase.from('users').insert({
-        id: newId,
-        email: email.trim().toLowerCase(),
-        name: name.trim(),
-        initials: computedInitials,
-        color,
-        role,
-        is_active: true,
-      }).select().single();
+      // Use RPC to bypass PostgREST schema cache issue
+      const { data, error: rpcErr } = await supabase.rpc('create_user', {
+        p_email: email.trim().toLowerCase(),
+        p_name: name.trim(),
+        p_initials: computedInitials,
+        p_color: color,
+        p_role: role,
+      });
 
-      if (insertErr) {
-        if (insertErr.message?.includes('duplicate') || insertErr.code === '23505') {
+      if (rpcErr) {
+        if (rpcErr.message?.includes('duplicate') || rpcErr.message?.includes('unique')) {
           setError('Un utilisateur avec cet email existe déjà.');
         } else {
-          setError(insertErr.message || 'Erreur lors de la création.');
+          setError(rpcErr.message || 'Erreur lors de la création.');
         }
         setLoading(false);
         return;
