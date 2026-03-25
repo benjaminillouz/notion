@@ -18,14 +18,24 @@ export function useAuth() {
     }
 
     async function fetchProfile(userId: string) {
-      const { data } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .single();
-      if (data && mounted) {
-        setUser(data as User);
+      // Retry a few times in case the trigger hasn't created the profile yet
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', userId)
+          .single();
+        if (data && mounted) {
+          setUser(data as User);
+          return;
+        }
+        if (error) console.warn('fetchProfile attempt', attempt + 1, error.message);
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 1000));
       }
+      // If profile still not found, sign out to avoid stuck loading
+      console.error('User profile not found after retries, signing out');
+      await supabase.auth.signOut();
+      if (mounted) setUser(null);
     }
 
     getInitialSession();
