@@ -58,7 +58,9 @@ function CreateUserModal({ dark, onClose, onCreated, existingCount }: CreateUser
     try {
       // Insert directly into users table (pre-provisioning)
       // When the user logs in via Google OAuth, the trigger will match by email
+      const newId = crypto.randomUUID();
       const { data, error: insertErr } = await supabase.from('users').insert({
+        id: newId,
         email: email.trim().toLowerCase(),
         name: name.trim(),
         initials: computedInitials,
