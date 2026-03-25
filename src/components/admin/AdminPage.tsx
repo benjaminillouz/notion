@@ -56,29 +56,41 @@ function CreateUserModal({ dark, onClose, onCreated, existingCount }: CreateUser
     setError('');
 
     try {
-      // Use RPC to bypass PostgREST stale schema cache
-      const { data, error: insertErr } = await supabase.rpc('admin_create_user', {
-        user_email: email.trim().toLowerCase(),
-        user_name: name.trim(),
-        user_initials: computedInitials,
-        user_color: color,
-        user_role: role,
-      });
+      // Call Edge Function to bypass PostgREST entirely
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(
+        'https://jcppaboawmgizafhused.supabase.co/functions/v1/create-user',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token}`,
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpjcHBhYm9hd21naXphZmh1c2VkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzMjEyODcsImV4cCI6MjA4Njg5NzI4N30.Lr_8C8xQc99pBT-NNsvBaiY_tzXQK1mkPJ9G6BAABg0',
+          },
+          body: JSON.stringify({
+            email: email.trim().toLowerCase(),
+            name: name.trim(),
+            initials: computedInitials,
+            color,
+            role,
+          }),
+        }
+      );
 
-      if (insertErr) {
-        if (insertErr.message?.includes('duplicate') || insertErr.message?.includes('unique')) {
+      const result = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 409) {
           setError('Un utilisateur avec cet email existe déjà.');
         } else {
-          setError(insertErr.message || 'Erreur lors de la création.');
+          setError(result.error || 'Erreur lors de la création.');
         }
         setLoading(false);
         return;
       }
 
-      if (data) {
-        onCreated(data as User);
-        onClose();
-      }
+      onCreated(result as User);
+      onClose();
     } catch (e: any) {
       setError(e.message || 'Erreur inconnue');
     } finally {
