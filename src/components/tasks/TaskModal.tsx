@@ -56,6 +56,17 @@ export function TaskModal({ task, dark, onClose, categoryId }: TaskModalProps) {
         );
       }
 
+      // Refetch assignees for this task and update store
+      const { data: freshAssignees } = await supabase
+        .from('task_assignees')
+        .select('*')
+        .eq('task_id', task.id);
+      if (freshAssignees) {
+        const store = useWorkspaceStore.getState();
+        const otherAssignees = store.taskAssignees.filter((a) => a.task_id !== task.id);
+        store.setTaskAssignees([...otherAssignees, ...freshAssignees]);
+      }
+
       useWorkspaceStore.getState().updateTask(task.id, {
         label: label.trim(),
         category_id: catId,

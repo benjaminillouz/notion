@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { LoginPage } from './components/auth/LoginPage';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
@@ -25,8 +25,6 @@ function AppContent() {
   const { workspaces, activeWorkspaceId, setActiveWorkspaceId, tasks, categories, comments } = useWorkspaceStore();
 
   const [showAddTask, setShowAddTask] = useState(false);
-  const [activityLog, setActivityLog] = useState<any[]>([]);
-
   const dark = darkMode;
   const bg = dark ? '#1a1a2e' : '#f0f2f8';
   const txt = dark ? '#e0e0e0' : '#212529';
@@ -39,19 +37,13 @@ function AppContent() {
     document.documentElement.classList.toggle('dark', darkMode);
   }, [darkMode]);
 
-  // Fetch activity log when history panel opens
-  useEffect(() => {
-    if (showHistory) {
-      supabase
-        .from('activity_log')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(200)
-        .then(({ data }) => {
-          if (data) setActivityLog(data);
-        });
-    }
-  }, [showHistory]);
+  // Recent task changes for history panel
+  const recentTasks = useMemo(() => {
+    return [...tasks]
+      .filter((t) => t.updated_at)
+      .sort((a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())
+      .slice(0, 50);
+  }, [tasks, showHistory]);
 
   const onExport = () => {
     const exportData = { workspaces, categories, tasks, comments };
@@ -177,13 +169,19 @@ function AppContent() {
             <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#4361ee' }}>Historique</span>
             <button onClick={() => setShowHistory(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', color: muted }}>×</button>
           </div>
-          {activityLog.length === 0 ? (
-            <p style={{ color: muted, fontSize: '0.8rem' }}>Aucune activité.</p>
+          {recentTasks.length === 0 ? (
+            <p style={{ color: muted, fontSize: '0.8rem' }}>Aucune activite recente.</p>
           ) : (
-            activityLog.map((h, i) => (
-              <div key={i} style={{ padding: '6px 0', borderBottom: '1px solid ' + bdr, fontSize: '0.76rem' }}>
-                <div style={{ fontSize: '0.66rem', color: muted }}>{new Date(h.created_at).toLocaleString('fr-FR')}</div>
-                <div style={{ marginTop: 1 }}>{h.action}</div>
+            recentTasks.map((t) => (
+              <div key={t.id} style={{ padding: '6px 0', borderBottom: '1px solid ' + bdr, fontSize: '0.76rem' }}>
+                <div style={{ fontSize: '0.66rem', color: muted }}>{t.updated_at ? new Date(t.updated_at).toLocaleString('fr-FR') : ''}</div>
+                <div style={{ marginTop: 1 }}>
+                  <span style={{ fontWeight: 600 }}>{t.label}</span>
+                  {' \u2014 '}
+                  <span style={{ color: t.status === 'fait' ? '#2ec4b6' : t.status === 'en_cours' ? '#f4a261' : muted }}>
+                    {t.status === 'fait' ? 'Fait' : t.status === 'en_cours' ? 'En cours' : 'A faire'}
+                  </span>
+                </div>
               </div>
             ))
           )}

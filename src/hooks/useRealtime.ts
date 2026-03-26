@@ -11,7 +11,11 @@ export function useRealtime() {
       .channel('db-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload) => {
         if (payload.eventType === 'INSERT') {
-          addTask(payload.new as Task);
+          const newTask = payload.new as Task;
+          const existingTasks = useWorkspaceStore.getState().tasks;
+          if (!existingTasks.some((t) => t.id === newTask.id)) {
+            addTask(newTask);
+          }
         } else if (payload.eventType === 'UPDATE') {
           updateTask((payload.new as Task).id, payload.new as Partial<Task>);
         } else if (payload.eventType === 'DELETE') {
