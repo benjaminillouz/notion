@@ -142,13 +142,13 @@ export function TaskListView() {
                     onToggleComments={toggleComments}
                   />
 
-                  {/* Subtask bar - moved here from TaskCard */}
-                  {task.depth === 0 && (
+                  {/* Subtask bar - only show if task has subtasks */}
+                  {task.depth === 0 && subtasks.length > 0 && (
                     <button
                       onClick={() => toggleSubtasks(task.id)}
                       style={{
                         width: '100%',
-                        padding: '4px 12px',
+                        padding: '3px 12px',
                         background: 'rgba(46,196,182,0.08)',
                         border: 'none',
                         cursor: 'pointer',
@@ -162,17 +162,15 @@ export function TaskListView() {
                       }}
                     >
                       {expandedSubtasks.has(task.id) ? '\u25BE' : '\u25B8'} SOUS-TACHES
-                      {subtasks.length > 0 && (
-                        <span style={{ fontWeight: 400, color: dark ? '#8888aa' : '#6c757d' }}>
-                          {subtaskDone}/{subtasks.length} faites
-                        </span>
-                      )}
+                      <span style={{ fontWeight: 400, color: dark ? '#8888aa' : '#6c757d' }}>
+                        {subtaskDone}/{subtasks.length} faites
+                      </span>
                     </button>
                   )}
 
-                  {/* Expanded subtasks */}
-                  {expandedSubtasks.has(task.id) && (
-                    <div>
+                  {/* Expanded subtasks - appear BELOW the subtask bar */}
+                  {expandedSubtasks.has(task.id) && subtasks.length > 0 && (
+                    <div style={{ borderLeft: '2px solid rgba(46,196,182,0.3)', marginLeft: 12 }}>
                       {subtasks.map((sub) => {
                         const subAssignees = getAssignees(sub.id);
                         const subComments = getComments(sub.id);
@@ -193,7 +191,6 @@ export function TaskListView() {
                               onDelete={(id) => setConfirmDelete(id)}
                               onToggleComments={toggleComments}
                             />
-                            {/* Level 2 subtasks */}
                             {subSubs.map((ssub) => (
                               <TaskCard
                                 key={ssub.id}
@@ -214,13 +211,12 @@ export function TaskListView() {
                           </div>
                         );
                       })}
-                      {/* Add subtask input */}
                       {addingSubtask === task.id ? (
                         <div style={{ display: 'flex', gap: 6, padding: '6px 12px 6px 32px' }}>
                           <input
                             value={subtaskLabel}
                             onChange={(e) => setSubtaskLabel(e.target.value)}
-                            placeholder="Nom de la sous-tache..."
+                            placeholder="Nom de la sous-tâche..."
                             autoFocus
                             onKeyDown={(e) => { if (e.key === 'Enter') handleAddSubtask(task.id, task.category_id); if (e.key === 'Escape') setAddingSubtask(null); }}
                             style={{ flex: 1, padding: '5px 8px', border: '1px solid ' + bdr, borderRadius: 6, fontSize: '0.78rem', background: dark ? '#1e2a4a' : 'white', color: txt, outline: 'none' }}
@@ -230,9 +226,9 @@ export function TaskListView() {
                       ) : (
                         <button
                           onClick={() => { setAddingSubtask(task.id); setSubtaskLabel(''); }}
-                          style={{ width: '100%', padding: '5px 12px 5px 32px', background: 'none', border: 'none', cursor: 'pointer', color: '#2ec4b6', fontSize: '0.7rem', textAlign: 'left' }}
+                          style={{ width: '100%', padding: '4px 12px 4px 32px', background: 'none', border: 'none', cursor: 'pointer', color: '#2ec4b6', fontSize: '0.65rem', textAlign: 'left' }}
                         >
-                          + Ajouter une sous-tache
+                          + Ajouter une sous-tâche
                         </button>
                       )}
                     </div>
